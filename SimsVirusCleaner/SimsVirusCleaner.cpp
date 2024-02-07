@@ -13,6 +13,7 @@
 
 std::string updater_hash_ = "8c8558dc150de295f4b1d557243b5d978f09cfcec94145cd1ddb5315b3a0d92a";
 std::string main_hash_ = "c98f0f5b89c6dac1482286faa2e33a84230c26ea38da4e013665582c9a04213b";
+bool is_detetcted_ = false;
 
 namespace fs = std::filesystem;
 
@@ -64,23 +65,26 @@ bool CalculateFileHash(const std::string& filename, std::string& hash) {
   return result;
 }
 
-void ScanFolder(std::string dir_path)
+bool ScanFolder(std::string dir_path)
 {
+  bool ret_val = false;
   for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
     if (entry.is_regular_file()) {
       std::string filePath = entry.path().string();
       std::string hash;
       if (CalculateFileHash(filePath, hash)) {
-        if(hash == updater_hash_ ||
+        if (hash == updater_hash_ ||
           hash == main_hash_)
-        std::cout << "Found File: " << filePath << "\nSHA-256: " << hash << std::endl;
+          std::cout << "Found File: " << filePath << "\nSHA-256: " << hash << std::endl;
         RemoveFile(filePath);
+        ret_val = true;
       }
       else {
         std::cout << "Failed to calculate hash for file: " << filePath << std::endl;
       }
     }
   }
+  return ret_val;
 }
 
 void KillProcessByName(std::string process_name) {
@@ -139,6 +143,32 @@ void CleaningTemp()
   }
 }
 
+
+void DeleteReg() {
+  // Define the path to the registry key
+  HKEY hKey;
+  LPCSTR subkey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+  // Open the registry key
+  LONG openRes = RegOpenKeyEx(HKEY_CURRENT_USER, subkey, 0, KEY_SET_VALUE, &hKey);
+
+  if (openRes == ERROR_SUCCESS) {
+    // Attempt to delete the value
+    LONG delRes = RegDeleteValue(hKey, "updater");
+    if (delRes == ERROR_SUCCESS) {
+      std::cout << "The 'updater' registry value has been successfully deleted." << std::endl;
+    }
+    else {
+      std::cerr << "Failed to delete the 'updater' registry value. Error code: " << delRes << std::endl;
+    }
+    // Close the registry key
+    RegCloseKey(hKey);
+  }
+  else {
+    std::cerr << "Failed to open the registry key. Error code: " << openRes << std::endl;
+  }
+}
+
 int main()
 {
   //Lets Kill the processes first//
@@ -172,8 +202,15 @@ int main()
   std::string second_path = prefix_appdata + prefix_path_two;
 
   //printf("appDataPath: %s\n", first_path.c_str());
-  ScanFolder(first_path);
-  ScanFolder(second_path);
-  CleaningTemp();
+  is_detetcted_ = ScanFolder(first_path);
+  if (is_detetcted_) {
+    DeleteReg();
+    ScanFolder(second_path);
+    CleaningTemp();
+    MessageBoxA(0, "Virus Detected And Deleted.", "Virus Detect.", 0);
+  }
+  else {
+    MessageBoxA(0, "Virus Not Detected.", "Virus Not Detect.", 0);
+  }
   system("PAUSE");
 }
